@@ -1,7 +1,12 @@
+import os, os.path
 import openbabel as ob
 import psi4
 import numpy as np
 from openmoltools import amber
+import mdtraj
+import shutil
+from openmoltools.utils import getoutput
+from openmoltools.amber import check_for_errors
 
 """
 dynamic_qm_properties.py
@@ -120,4 +125,76 @@ def gcrt2prmtop(gcrt_file):
     amber.run_tleap(system_name, system_name+'.gaff.mol2',system_name+'.frcmod',system_name+'.prmtop',system_name+'.crd')
     return None
 
+
+def run_tleap_solv(molecule_name, gaff_mol2_filename, frcmod_filename, prmtop_filename=None, inpcrd_filename=None, log_debug_output=False, leaprc='leaprc.gaff'):
+    """Run AmberTools tleap to create simulation files for AMBER
+    Parameters
+    ----------
+    molecule_name : str
+        The name of the molecule
+    gaff_mol2_filename : str
+        GAFF format mol2 filename produced by antechamber
+    frcmod_filename : str
+        Amber frcmod file produced by prmchk
+    prmtop_filename : str, optional, default=None
+        Amber prmtop file produced by tleap, defaults to molecule_name
+    inpcrd_filename : str, optional, default=None
+        Amber inpcrd file produced by tleap, defaults to molecule_name
+    log_debug_output : bool, optional, default=False
+        If true, will send output of tleap to logger.
+    leaprc : str, optional, default = 'leaprc.gaff'
+        Optionally, specify alternate leaprc to use, such as `leaprc.gaff2`
+    Returns
+    -------
+    prmtop_filename : str
+        Amber prmtop file produced by tleap
+    inpcrd_filename : str
+        Amber inpcrd file produced by tleap
+    """
+    if prmtop_filename is None:
+        prmtop_filename = "%s.prmtop" % molecule_name
+    if inpcrd_filename is None:
+        inpcrd_filename = "%s.inpcrd" % molecule_name
+
+    #Get absolute paths for input/output
+    gaff_mol2_filename = os.path.abspath( gaff_mol2_filename )
+    frcmod_filename = os.path.abspath( frcmod_filename )
+    prmtop_filename = os.path.abspath( prmtop_filename )
+    inpcrd_filename = os.path.abspath( inpcrd_filename )
+
+    #Work in a temporary directory, on hard coded filenames, to avoid any issues AMBER may have with spaces and other special characters in filenames
+    with mdtraj.utils.enter_temp_directory():
+        shutil.copy( gaff_mol2_filename, 'file.mol2' )
+        shutil.copy( frcmod_filename, 'file.frcmod' )
+
+        tleap_input = """
+    source oldff/leaprc.ff99SB
+    source %s
+    source leaprc.water.tip3p
+    LIG = loadmol2 file.mol2
+    check LIG
+    loadamberparams file.frcmod
+    solvatebox LIG TIP3PBOX 8 
+    addions LIG Cl- 0 
+    saveamberparm LIG out.prmtop out.inpcrd
+    quit
+""" % leaprc
+
+        file_handle = open('tleap_commands', 'w')
+        file_handle.writelines(tleap_input)
+        file_handle.close()
+
+        cmd = "tleap -f %s " % file_handle.name
+        if log_debug_output: logger.debug(cmd)
+
+        output = getoutput(cmd)
+        if log_debug_output: logger.debug(output)
+
+        check_for_errors( output, other_errors = ['Improper number of arguments'] )
+
+        #Copy back target files
+        shutil.copy( 'out.prmtop', prmtop_filename )
+        shutil.copy( 'out.inpcrd', inpcrd_filename )
+
+    return prmtop_filename, inpcrd_filename
 
