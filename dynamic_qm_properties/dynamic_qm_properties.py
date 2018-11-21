@@ -127,7 +127,8 @@ def gcrt2prmtop(gcrt_file):
 
 
 def run_tleap_solv(molecule_name, gaff_mol2_filename, frcmod_filename, prmtop_filename=None, inpcrd_filename=None, log_debug_output=False, leaprc='leaprc.gaff'):
-    """Run AmberTools tleap to create simulation files for AMBER
+    """This is the same as run_tleap from openmoltools, but includes the creation of a box of water around the molecule.
+    Run AmberTools tleap to create simulation files for AMBER
     Parameters
     ----------
     molecule_name : str
